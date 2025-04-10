@@ -13,7 +13,7 @@ import {
 } from './styles';
 
 // API base URL - adjust to match your Flask server location
-const API_BASE_URL = 'https://localhost:5000/api';
+const API_BASE_URL = 'https://test-959365755535.asia-south2.run.app/';
 
 type MessageType = {
   id: string;
