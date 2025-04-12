@@ -12,9 +12,6 @@ import {
   LoadingIndicator
 } from './styles';
 
-// API base URL - adjust to match your Flask server location
-const API_BASE_URL = 'https://test-959365755535.asia-south2.run.app/';
-
 type MessageType = {
   id: string;
   content: string;
@@ -31,170 +28,109 @@ export default function ChatPage() {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [jobPolling, setJobPolling] = useState<{[key: string]: NodeJS.Timeout}>({});
 
   const generateRandomId = () => Math.random().toString(36).substring(2, 9);
 
-  // Cleanup polling intervals on unmount
-  useEffect(() => {
-    return () => {
-      Object.values(jobPolling).forEach(interval => clearInterval(interval));
-    };
-  }, [jobPolling]);
-
-  // Poll for job status
-  const pollJobStatus = (jobId: string, messageId: string) => {
-    // Clear any existing polling for this job
-    if (jobPolling[jobId]) {
-      clearInterval(jobPolling[jobId]);
-    }
-    
-    const interval = setInterval(async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/status/${jobId}`);
-        const data = await response.json();
-        
-        if (data.status === 'failed') {
-          clearInterval(jobPolling[jobId]);
-          setMessages(prev => prev.map(msg => 
-            msg.id === messageId ? 
-            {...msg, content: `Error generating visualization: ${data.error || 'Unknown error'}`, status: 'failed'} : 
-            msg
-          ));
-          setIsLoading(false);
-          
-          // Remove from polling object
-          setJobPolling(prev => {
-            const newPolling = { ...prev };
-            delete newPolling[jobId];
-            return newPolling;
-          });
-        } 
-        else if (data.status === 'completed') {
-          clearInterval(jobPolling[jobId]);
-          
-          // Fetch solution and code
-          const [solutionRes, codeRes] = await Promise.all([
-            fetch(`${API_BASE_URL}/solution/${jobId}`),
-            fetch(`${API_BASE_URL}/code/${jobId}`)
-          ]);
-          
-          const solutionData = await solutionRes.json();
-          const codeData = await codeRes.json();
-          
-          setMessages(prev => prev.map(msg => 
-            msg.id === messageId ? 
-            {
-              ...msg, 
-              content: 'Your visualization is ready! Here\'s what I found:',
-              videoUrl: `${API_BASE_URL}/video/${jobId}`,
-              solution: solutionData.solution,
-              code: codeData.manim_code,
-              status: 'completed'
-            } : 
-            msg
-          ));
-          setIsLoading(false);
-          
-          // Remove from polling object
-          setJobPolling(prev => {
-            const newPolling = { ...prev };
-            delete newPolling[jobId];
-            return newPolling;
-          });
-        }
-        else {
-          // Update the status message
-          setMessages(prev => prev.map(msg => 
-            msg.id === messageId ? 
-            {...msg, content: `Generating visualization: ${data.status.replace(/_/g, ' ')}...`, status: data.status} : 
-            msg
-          ));
-        }
-      } catch (error) {
-        console.error('Error polling job status:', error);
-      }
-    }, 2000);
-    
-    // Save the interval ID
-    setJobPolling(prev => ({...prev, [jobId]: interval}));
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!inputValue.trim()) return;
-    
-    // Add user message
+
     const userMessage: MessageType = {
       id: generateRandomId(),
       content: inputValue,
       sender: 'user',
     };
-    
+
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
-    
-    // Create initial assistant message
-    const assistantMessageId = generateRandomId(); // corrected: now calling the function
-    const assistantMessage: MessageType = {
+
+    const assistantMessageId = generateRandomId();
+    const initialAssistantMsg: MessageType = {
       id: assistantMessageId,
-      content: 'Processing your request...',
+      content: 'Understanding the question...',
       sender: 'assistant',
       status: 'processing'
     };
-    
-    setMessages(prev => [...prev, assistantMessage]);
-    
-    try {
-      // Send request to backend
-      const response = await fetch(`${API_BASE_URL}/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt: inputValue }),
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok) {
-        // Update assistant message with job ID
-        setMessages(prev => prev.map(msg => 
-          msg.id === assistantMessageId ? 
-          {...msg, jobId: data.job_id, content: 'Generating solution...'} : 
-          msg
-        ));
-        
-        // Start polling for job status
-        pollJobStatus(data.job_id, assistantMessageId);
-      } else {
-        // Handle error
-        setMessages(prev => prev.map(msg => 
-          msg.id === assistantMessageId ? 
-          {...msg, content: `Error: ${data.error || 'Failed to generate visualization'}`} : 
-          msg
-        ));
-        setIsLoading(false);
-      }
-    } catch (error) {
-      console.error('Error sending request:', error);
-      // Update assistant message with error
-      setMessages(prev => prev.map(msg => 
-        msg.id === assistantMessageId ? 
-        {...msg, content: 'Sorry, there was an error processing your request. Please try again.'} : 
-        msg
+
+    setMessages(prev => [...prev, initialAssistantMsg]);
+
+    // Step 1: Understanding the question
+    setTimeout(() => {
+      setMessages(prev => prev.map(msg =>
+        msg.id === assistantMessageId
+          ? { ...msg, content: 'Generating Manim code...' }
+          : msg
       ));
-      setIsLoading(false);
-    }
+
+      // Step 2: Generating Manim code
+      setTimeout(() => {
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: 'Generating Manim visualization...' }
+            : msg
+        ));
+
+        // Step 3: Final output
+        setTimeout(() => {
+          setMessages(prev => prev.map(msg =>
+            msg.id === assistantMessageId
+              ? {
+                  ...msg,
+                  content: "Your visualization is ready! Here's what I found:",
+                  videoUrl: "/videos/linkedlist.mp4",
+                  solution: `To reverse a singly linked list:
+1. Initialize three pointers: prev (null), current (head), and next (null).
+2. Traverse the list, and for each node:
+   - Store the next node in 'next'
+   - Point current.next to 'prev'
+   - Move 'prev' to current
+   - Move 'current' to next
+3. When current becomes null, 'prev' will point to the new head.`,
+                  code: `
+from manim import *
+
+class ReverseLinkedList(Scene):
+    def construct(self):
+        title = Text("Reversing a Linked List").scale(0.8)
+        self.play(Write(title))
+        self.wait(1)
+        self.play(FadeOut(title))
+
+        nodes = [Circle(radius=0.4, color=BLUE).set_fill(BLUE, opacity=0.5) for _ in range(5)]
+        labels = [Text(str(i)) for i in range(1, 6)]
+
+        for i, node in enumerate(nodes):
+            node.move_to(LEFT * 4 + RIGHT * i * 2)
+            labels[i].move_to(node.get_center())
+
+        arrows = [Arrow(nodes[i].get_right(), nodes[i+1].get_left(), buff=0.1) for i in range(4)]
+
+        self.play(*[FadeIn(node) for node in nodes], *[FadeIn(label) for label in labels])
+        self.play(*[GrowArrow(arrow) for arrow in arrows])
+        self.wait(1)
+
+        self.play(Write(Text("Reversing...", font_size=36).next_to(nodes[2], DOWN)))
+        self.wait(1)
+        # Add reversal animation here
+                  `,
+                  status: 'completed'
+                }
+              : msg
+          ));
+          setIsLoading(false);
+        }, 5000); // Manim Visualization generation
+
+      }, 5000); // Manim Code generation
+
+    }, 5000); // Understanding the question
   };
 
   // Auto-scroll to bottom when messages update
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-  
+
   return (
     <Container>
       <ChatContainer>
@@ -202,32 +138,31 @@ export default function ChatPage() {
           {messages.map((message) => (
             <Message key={message.id} sender={message.sender}>
               <div className="content">{message.content}</div>
-              
+
               {message.videoUrl && (
                 <VideoEmbed>
-                  <iframe
-                    src={message.videoUrl}
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
+                  <video controls width="100%">
+  <source src={message.videoUrl} type="video/mp4" />
+  Your browser does not support the video tag.
+</video>
+
                 </VideoEmbed>
               )}
-              
+
               {message.solution && (
                 <div className="solution">
                   <h3>Solution Explanation</h3>
                   <pre>{message.solution}</pre>
                 </div>
               )}
-              
+
               {message.code && (
                 <div className="code">
                   <h3>Visualization Code</h3>
                   <pre>{message.code}</pre>
                 </div>
               )}
-              
+
               {message.status === 'processing' && (
                 <LoadingIndicator>
                   <div className="dot"></div>
@@ -237,16 +172,16 @@ export default function ChatPage() {
               )}
             </Message>
           ))}
-          
+
           <div ref={messagesEndRef} />
         </MessageList>
-        
+
         <form onSubmit={handleSubmit}>
           <InputArea>
             <InputBox
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Enter a problem to visualize (e.g., 'binary search algorithm')"
+              placeholder="Enter a problem to visualize (e.g., 'reverse a linked list')"
               disabled={isLoading}
             />
             <SendButton 
